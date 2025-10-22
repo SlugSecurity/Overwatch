@@ -1,19 +1,22 @@
 {
 	"name": "Overwatch",
 	"version": "1.0.0",
-	"main": "index.js",
+	"main": "index.ts",
 	"scripts": {
-		"start": "node index.js"
+		"start": "bun run index.ts"
 	},
 	"dependencies": {
-		"better-sqlite3": "^10.0.0",
 		"cheerio": "^1.0.0-rc.12",
 		"discord.js": "^14.7.1",
-		"dotenv": "^16.0.3",
 		"node-cron": "^3.0.2",
 		"node-fetch": "^3.3.1",
 		"ollama": "^0.5.1",
 		"openai": "^4.12.3"
+	},
+	"devDependencies": {
+		"@types/node": "latest",
+		"@types/node-cron": "^3.0.11",
+		"bun-types": "latest"
 	},
 	"imports": {
 		"#events/*": "./events/*",

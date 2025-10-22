@@ -1,4 +1,4 @@
-import { SlashCommandBuilder } from 'discord.js';
+import { SlashCommandBuilder, type ChatInputCommandInteraction } from 'discord.js';
 
 const create = () => {
 	const command = new SlashCommandBuilder()
@@ -9,7 +9,7 @@ const create = () => {
 };
 
 
-const invoke = async (interaction) => {
+const invoke = async (interaction: ChatInputCommandInteraction) => {
 	const startTime = Date.now();
 
 	await interaction.deferReply({ ephemeral: true });

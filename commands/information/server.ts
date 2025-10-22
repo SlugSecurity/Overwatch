@@ -1,4 +1,4 @@
-import { EmbedBuilder, SlashCommandBuilder } from 'discord.js';
+import { EmbedBuilder, SlashCommandBuilder, type ChatInputCommandInteraction } from 'discord.js';
 
 const create = () => {
 	const command = new SlashCommandBuilder()
@@ -9,8 +9,9 @@ const create = () => {
 	return command.toJSON();
 };
 
-const invoke = (interaction) => {
+const invoke = (interaction: ChatInputCommandInteraction) => {
 	const guild = interaction.guild;
+	if (!guild) return;
 
 	const embed = new EmbedBuilder().setTitle(guild.name).addFields([
 		{
@@ -49,7 +50,7 @@ const invoke = (interaction) => {
 		},
 		{
 			name: 'Boosts',
-			value: guild.premiumSubscriptionCount.toString(),
+			value: (guild.premiumSubscriptionCount ?? 0).toString(),
 			inline: true,
 		},
 		{

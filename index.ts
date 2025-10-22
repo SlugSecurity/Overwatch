@@ -1,8 +1,7 @@
 import { Client, GatewayIntentBits, Partials } from 'discord.js';
 import { loadEvents } from '#util/botStartup.js';
-import 'dotenv/config';
 
-const client = new Client({ 
+const client = new Client({
 	intents: [
 		GatewayIntentBits.Guilds,
 		GatewayIntentBits.GuildMessages,
