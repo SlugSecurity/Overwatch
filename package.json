@@ -6,23 +6,30 @@
 		"start": "bun run index.ts"
 	},
 	"dependencies": {
+		"@influxdata/influxdb-client": "^1.35.0",
 		"cheerio": "^1.0.0-rc.12",
 		"discord.js": "^14.7.1",
+		"express": "^4.18.2",
 		"node-cron": "^3.0.2",
 		"node-fetch": "^3.3.1",
 		"ollama": "^0.5.1",
-		"openai": "^4.12.3"
+		"openai": "^4.12.3",
+		"uuid": "^9.0.1"
 	},
 	"devDependencies": {
+		"@types/express": "^4.17.21",
 		"@types/node": "latest",
 		"@types/node-cron": "^3.0.11",
+		"@types/uuid": "^9.0.7",
 		"bun-types": "latest"
 	},
 	"imports": {
 		"#events/*": "./events/*",
 		"#commands/*": "./commands/*",
 		"#jobs/*": "./jobs/*",
-		"#util/*": "./util/*"
+		"#util/*": "./util/*",
+		"#server/*": "./server/*",
+		"#config/*": "./config/*"
 	},
 	"type": "module"
 }

@@ -11,6 +11,8 @@ import {
 } from 'discord.js';
 import { Database } from 'bun:sqlite';
 import { ATTENDANCE_MESSAGES, formatMessage, pluralize } from '../config/attendance.js';
+import { VERIFIED_ROLE_ID, ssoDb } from '../config/sso.js';
+import { writeAttendanceMetric } from '../util/influx.js';
 
 const once = false;
 const eventType = Events.InteractionCreate;
@@ -44,6 +46,14 @@ async function invoke(client: Client, interaction: Interaction): Promise<void> {
 			if (now > session.expires_at) {
 				await interaction.reply({
 					content: ATTENDANCE_MESSAGES.errors.sessionExpired,
+					flags: MessageFlags.Ephemeral
+				});
+				return;
+			}
+
+			if (!interaction.member || !('roles' in interaction.member) || !interaction.member.roles.cache.has(VERIFIED_ROLE_ID)) {
+				await interaction.reply({
+					content: ATTENDANCE_MESSAGES.errors.notVerified,
 					flags: MessageFlags.Ephemeral
 				});
 				return;
@@ -133,6 +143,17 @@ async function invoke(client: Client, interaction: Interaction): Promise<void> {
 				INSERT INTO attendance_records (session_id, user_id, username, submitted_at)
 				VALUES (?, ?, ?, ?)
 			`).run(sessionId, interaction.user.id, interaction.user.tag, Math.floor(Date.now() / 1000));
+
+			const verifiedUser = ssoDb.query('SELECT email FROM verified_users WHERE discord_id = ?').get(interaction.user.id) as { email: string } | null;
+			if (verifiedUser) {
+				const cruzid = verifiedUser.email.split('@')[0];
+				writeAttendanceMetric({
+					eventSeries: session.event_series,
+					cruzid,
+					username: interaction.user.tag,
+					sessionId
+				});
+			}
 
 			const attendees = db.query(
 				'SELECT user_id FROM attendance_records WHERE session_id = ? ORDER BY submitted_at ASC'

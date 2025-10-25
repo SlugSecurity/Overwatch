@@ -1,41 +1,44 @@
 export const EVENT_SERIES = [
 	"Workshop",
 	"Cyber Defense Working Group",
-	"Hardware Hacking Working Group"
+	"Hardware Hacking Working Group",
+	"Officer Meeting"
 ] as const;
 
-export const ATTENDANCE_OFFICER_ROLES = [
-	"1430437261421580299"
-] as const;
+export const ATTENDANCE_OFFICER_ROLES = (process.env.ATTENDANCE_OFFICER_ROLES || '')
+	.split(',')
+	.map(id => id.trim())
+	.filter(id => id.length > 0) as readonly string[];
 
 export const ATTENDANCE_MESSAGES = {
 	command: {
-		description: 'Create an attendance tracking session',
+		description: 'Create a timed sign-in session for an event',
 		options: {
 			eventSeries: 'Select the event series',
 			expirationMins: 'How long until attendance closes (in minutes)',
-			attendanceKey: 'Secret attendance key that users must enter'
+			attendanceKey: 'Secret code that people need to enter when they sign in'
 		}
 	},
 
 	errors: {
-		noPermission: 'You do not have permission to use this command.',
-		channelNotFound: 'Failed to create attendance session: channel not found.',
-		sessionNotFound: 'This attendance session no longer exists.',
-		sessionExpired: 'This attendance session has expired.',
-		alreadySignedIn: 'You have already signed in for this event.',
-		incorrectCode: 'Incorrect attendance code. Please try again.'
+		noPermission: 'You can\'t use this command',
+		channelNotFound: 'Couldn\'t create the sign-in session, channel not found',
+		sessionNotFound: 'This sign-in session doesn\'t exist anymore',
+		sessionExpired: 'This sign-in session has expired',
+		alreadySignedIn: 'You already signed in for this event',
+		incorrectCode: 'Wrong code, try again',
+		notVerified: 'You need to verify your account before you can sign in for events\n\nUse the `/verify` command to link your UCSC account and unlock attendance, cyber range access, and more'
 	},
 
 	status: {
 		creating: 'Creating sign-in session...',
-		closed: 'Sign-ins are now closed.'
+		closed: 'Sign-ins are now closed'
 	},
 
 	embed: {
 		color: 0xff6e42,
 		titleTemplate: '{eventSeries} - Sign-In',
-		description: 'Sign in below to mark your attendance for this event!',
+		description: 'Sign in below to mark your attendance for this event! We use attendance to keep track of active members and club stats',
 		fields: {
 			closes: 'Closes',
 			signedIn: 'Signed In',
@@ -57,7 +60,7 @@ export const ATTENDANCE_MESSAGES = {
 
 	success: {
 		createdTemplate: 'Sign-in session created for **{eventSeries}**!\n\nCode: `{attendanceKey}`\nCloses: <t:{expiresAt}:R>',
-		signedInTemplate: 'Signed in for **{eventSeries}**.',
+		signedInTemplate: 'Signed in for **{eventSeries}**',
 		historyHeader: '\n\nYour attendance history:',
 		historyItemTemplate: '\n- {eventSeries}: {count} {plural}'
 	}

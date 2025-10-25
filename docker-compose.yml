@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  overwatch-bot:
+    build: .
+    container_name: overwatch-bot
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    volumes:
+      - ./databases:/app/databases
+    environment:
+      - NODE_ENV=production
