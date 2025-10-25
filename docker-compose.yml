@@ -6,7 +6,7 @@ services:
     container_name: overwatch-bot
     restart: unless-stopped
     ports:
-      - "3000:3002"
+      - "3002:3000"
     volumes:
       - ./databases:/app/databases
     environment:
