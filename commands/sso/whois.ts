@@ -4,11 +4,9 @@ import {
 	EmbedBuilder,
 	MessageFlags
 } from 'discord.js';
-import { Database } from 'bun:sqlite';
-import { ssoDb, SSO_MESSAGES, formatMessage } from '#config/sso.ts';
-import { ATTENDANCE_OFFICER_ROLES, ATTENDANCE_MESSAGES, pluralize } from '#config/attendance.ts';
-
-const attendanceDb = new Database('databases/server.db');
+import { getVerifiedUsersCollection, getAttendanceMetricsCollection } from '#config/database.ts';
+import { SSO_MESSAGES, formatMessage } from '#config/sso.ts';
+import { pluralize } from '#config/attendance.ts';
 
 const create = () => {
 	const command = new SlashCommandBuilder()
@@ -26,32 +24,9 @@ const create = () => {
 };
 
 const invoke = async (interaction: ChatInputCommandInteraction) => {
-	const member = interaction.member;
-	if (!member || !('roles' in member)) {
-		await interaction.reply({
-			content: SSO_MESSAGES.errors.noPermission,
-			flags: MessageFlags.Ephemeral
-		});
-		return;
-	}
-
-	const hasRole = ATTENDANCE_OFFICER_ROLES.some(roleId =>
-		member.roles.cache.has(roleId)
-	);
-
-	if (!hasRole) {
-		await interaction.reply({
-			content: SSO_MESSAGES.errors.noPermission,
-			flags: MessageFlags.Ephemeral
-		});
-		return;
-	}
-
 	const targetUser = interaction.options.getUser('user', true);
 
-	const verifiedUser = ssoDb.query(
-		'SELECT email, full_name, verified_at FROM verified_users WHERE discord_id = ?'
-	).get(targetUser.id) as { email: string; full_name: string; verified_at: number } | null;
+	const verifiedUser = await getVerifiedUsersCollection().findOne({ _id: targetUser.id });
 
 	if (!verifiedUser) {
 		console.log(`[SSO] /whois lookup failed: officer_id=${interaction.user.id} target_discord_id=${targetUser.id} not verified`);
@@ -64,24 +39,28 @@ const invoke = async (interaction: ChatInputCommandInteraction) => {
 
 	console.log(`[SSO] /whois lookup: officer_id=${interaction.user.id} target_discord_id=${targetUser.id} email=${verifiedUser.email}`);
 
-	const attendanceHistory = attendanceDb.query(`
-		SELECT s.event_series, COUNT(*) as count
-		FROM attendance_records r
-		JOIN attendance_sessions s ON r.session_id = s.session_id
-		WHERE r.user_id = ?
-		GROUP BY s.event_series
-		ORDER BY s.event_series
-	`).all(targetUser.id) as Array<{ event_series: string; count: number }>;
+	const cruzid = verifiedUser.email.split('@')[0];
+
+	const attendanceHistory = await getAttendanceMetricsCollection().aggregate([
+		{ $match: { cruzid } },
+		{ $group: {
+			_id: '$eventSeries',
+			count: { $sum: 1 }
+		}},
+		{ $sort: { _id: 1 } }
+	]).toArray() as Array<{ _id: string; count: number }>;
 
 	let attendanceText = '';
 	if (attendanceHistory.length > 0) {
 		for (const record of attendanceHistory) {
 			const plural = pluralize(record.count, 'session', 'sessions');
-			attendanceText += `\n- ${record.event_series}: ${record.count} ${plural}`;
+			attendanceText += `\n- ${record._id}: ${record.count} ${plural}`;
 		}
 	} else {
 		attendanceText = 'No attendance records';
 	}
+
+	const verifiedAtUnix = Math.floor(verifiedUser.verifiedAt.getTime() / 1000);
 
 	const embed = new EmbedBuilder()
 		.setColor(SSO_MESSAGES.command.whois.resultColor)
@@ -89,8 +68,8 @@ const invoke = async (interaction: ChatInputCommandInteraction) => {
 		.addFields(
 			{ name: 'Discord User', value: `<@${targetUser.id}> (${targetUser.id})`, inline: false },
 			{ name: 'Email', value: verifiedUser.email, inline: true },
-			{ name: 'Name', value: verifiedUser.full_name || 'N/A', inline: true },
-			{ name: 'Verified At', value: `<t:${verifiedUser.verified_at}:F>`, inline: false },
+			{ name: 'Name', value: verifiedUser.fullName || 'N/A', inline: true },
+			{ name: 'Verified At', value: `<t:${verifiedAtUnix}:F>`, inline: false },
 			{ name: 'Attendance History', value: attendanceText, inline: false }
 		)
 		.setThumbnail(targetUser.displayAvatarURL());

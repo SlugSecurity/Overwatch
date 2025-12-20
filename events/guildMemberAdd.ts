@@ -1,11 +1,14 @@
 import { Events, type Client, type GuildMember } from 'discord.js';
-import { ssoDb, VERIFIED_ROLE_ID } from '#config/sso.ts';
+import { getVerifiedUsersCollection } from '#config/database.ts';
+import { VERIFIED_ROLE_ID } from '#config/sso.ts';
+import { ACTIVE_MEMBER_ROLE_ID } from '#config/activeMember.ts';
+import { isQualifiedForCurrentQuarter } from '#util/activeMember.ts';
 
 const once = false;
 const eventType = Events.GuildMemberAdd;
 
 async function invoke(client: Client, member: GuildMember): Promise<void> {
-	const verifiedUser = ssoDb.query('SELECT email FROM verified_users WHERE discord_id = ?').get(member.id) as { email: string } | null;
+	const verifiedUser = await getVerifiedUsersCollection().findOne({ _id: member.id });
 
 	if (!verifiedUser) {
 		return;
@@ -16,6 +19,18 @@ async function invoke(client: Client, member: GuildMember): Promise<void> {
 		console.log(`[SSO] auto-assigned role on rejoin: discord_id=${member.id} email=${verifiedUser.email} guild_id=${member.guild.id}`);
 	} catch (err) {
 		console.error(`[SSO] failed to auto-assign role on rejoin: discord_id=${member.id} guild_id=${member.guild.id}`, err);
+	}
+
+	if (!ACTIVE_MEMBER_ROLE_ID) return;
+
+	const qualified = await isQualifiedForCurrentQuarter(member.id);
+	if (!qualified) return;
+
+	try {
+		await member.roles.add(ACTIVE_MEMBER_ROLE_ID);
+		console.log(`[ACTIVE_MEMBER] auto-assigned role on rejoin: discord_id=${member.id} guild_id=${member.guild.id}`);
+	} catch (err) {
+		console.error(`[ACTIVE_MEMBER] failed to auto-assign role on rejoin: discord_id=${member.id} guild_id=${member.guild.id}`, err);
 	}
 }
 

@@ -1,4 +1,5 @@
 import { Client, GatewayIntentBits, Partials } from 'discord.js';
+import { connectDatabase } from '#config/database.ts';
 import { loadEvents } from '#util/botStartup.js';
 import { startServer } from '#server/index.ts';
 
@@ -20,6 +21,8 @@ const client = new Client({
 		Partials.Reaction
 	],
 });
+
+await connectDatabase();
 
 await loadEvents(client);
 

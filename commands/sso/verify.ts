@@ -7,7 +7,8 @@ import {
 	ButtonStyle,
 	MessageFlags
 } from 'discord.js';
-import { ssoDb, SSO_MESSAGES, formatMessage, SSO_CONFIG, VERIFIED_ROLE_ID } from '#config/sso.ts';
+import { getVerifiedUsersCollection } from '#config/database.ts';
+import { SSO_MESSAGES, formatMessage, SSO_CONFIG, VERIFIED_ROLE_ID } from '#config/sso.ts';
 import { generateState } from '#server/oauth.ts';
 
 const create = () => {
@@ -22,7 +23,7 @@ const create = () => {
 const invoke = async (interaction: ChatInputCommandInteraction) => {
 	const userId = interaction.user.id;
 
-	const existingUser = ssoDb.query('SELECT email FROM verified_users WHERE discord_id = ?').get(userId) as { email: string } | null;
+	const existingUser = await getVerifiedUsersCollection().findOne({ _id: userId });
 
 	if (existingUser) {
 		const member = interaction.member;

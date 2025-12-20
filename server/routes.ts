@@ -1,7 +1,8 @@
 import type { Request, Response } from 'express';
 import type { Client } from 'discord.js';
 import { buildAuthorizeUrl, consumeState, exchangeCodeForToken, getUserInfo } from './oauth.js';
-import { ssoDb, VERIFIED_ROLE_ID, SSO_MESSAGES, formatMessage } from '#config/sso.ts';
+import { getVerifiedUsersCollection } from '#config/database.ts';
+import { VERIFIED_ROLE_ID, SSO_MESSAGES, formatMessage } from '#config/sso.ts';
 
 function htmlTemplate(title: string, heading: string, message: string): string {
 	return `
@@ -82,24 +83,23 @@ export async function handleCallback(req: Request, res: Response, client: Client
 		const tokens = await exchangeCodeForToken(code);
 		const userInfo = await getUserInfo(tokens.access_token);
 
-		const existingUser = ssoDb.query('SELECT discord_id FROM verified_users WHERE email = ?').get(userInfo.email) as { discord_id: string } | null;
+		const existingUser = await getVerifiedUsersCollection().findOne({ email: userInfo.email });
 
-		if (existingUser && existingUser.discord_id !== discordId) {
-			console.error(`[SSO] verification failed: email=${userInfo.email} already linked to discord_id=${existingUser.discord_id}`);
+		if (existingUser && existingUser._id !== discordId) {
+			console.error(`[SSO] verification failed: email=${userInfo.email} already linked to discord_id=${existingUser._id}`);
 			res.status(400).send(htmlTemplate('Error', 'Already Linked', SSO_MESSAGES.errors.alreadyLinked));
 			return;
 		}
 
-		const verifiedAt = Math.floor(Date.now() / 1000);
-
-		ssoDb.query(`
-			INSERT INTO verified_users (discord_id, email, full_name, verified_at)
-			VALUES (?, ?, ?, ?)
-			ON CONFLICT(discord_id) DO UPDATE SET
-				email = excluded.email,
-				full_name = excluded.full_name,
-				verified_at = excluded.verified_at
-		`).run(discordId, userInfo.email, userInfo.name, verifiedAt);
+		await getVerifiedUsersCollection().updateOne(
+			{ _id: discordId },
+			{ $set: {
+				email: userInfo.email,
+				fullName: userInfo.name,
+				verifiedAt: new Date()
+			}},
+			{ upsert: true }
+		);
 
 		console.log(`[SSO] user verified: discord_id=${discordId} email=${userInfo.email} name=${userInfo.name}`);
 

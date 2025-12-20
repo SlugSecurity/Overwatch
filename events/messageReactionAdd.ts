@@ -9,7 +9,8 @@ async function invoke(client: Client, reaction: MessageReaction, user: User): Pr
 		return;
 	}
 
-	await sendFirstTimeGreeting(user);
+	const member = reaction.message.guild?.members.cache.get(user.id) || null;
+	await sendFirstTimeGreeting(user, member);
 }
 
 export { once, eventType, invoke };

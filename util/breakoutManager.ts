@@ -29,7 +29,11 @@ export async function createBreakout(member: GuildMember, currentChannel: VoiceC
 		permissionOverwrites: [
 			{
 				id: member.id,
-				allow: [PermissionFlagsBits.ManageChannels]
+				allow: [
+					PermissionFlagsBits.ManageChannels,
+					PermissionFlagsBits.MoveMembers,
+					PermissionFlagsBits.PrioritySpeaker
+				]
 			}
 		]
 	});

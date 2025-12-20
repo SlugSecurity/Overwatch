@@ -5,11 +5,6 @@ export const EVENT_SERIES = [
 	"Officer Meeting"
 ] as const;
 
-export const ATTENDANCE_OFFICER_ROLES = (process.env.ATTENDANCE_OFFICER_ROLES || '')
-	.split(',')
-	.map(id => id.trim())
-	.filter(id => id.length > 0) as readonly string[];
-
 export const ATTENDANCE_MESSAGES = {
 	command: {
 		description: 'Create a timed sign-in session for an event',
@@ -20,8 +15,17 @@ export const ATTENDANCE_MESSAGES = {
 		}
 	},
 
+	addCommand: {
+		description: 'Manually add a user to an attendance session',
+		options: {
+			session: 'Select the session to add the user to',
+			user: 'The user to add'
+		},
+		success: 'Added **{username}** to **{eventSeries}**',
+		alreadyInSession: '**{username}** is already in this session'
+	},
+
 	errors: {
-		noPermission: 'You can\'t use this command',
 		channelNotFound: 'Couldn\'t create the sign-in session, channel not found',
 		sessionNotFound: 'This sign-in session doesn\'t exist anymore',
 		sessionExpired: 'This sign-in session has expired',

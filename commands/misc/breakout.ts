@@ -4,7 +4,7 @@ import { hasActiveBreakout, createBreakout, getBreakoutChannelId } from '../../u
 const create = () => {
 	const command = new SlashCommandBuilder()
 		.setName('breakout')
-		.setDescription('Create a temporary voice channel and move there in 5 seconds')
+		.setDescription('Create a temporary voice channel with admin perms (auto-deletes when empty)')
 		.setDMPermission(false);
 
 	return command.toJSON();
@@ -45,7 +45,7 @@ const invoke = async (interaction: ChatInputCommandInteraction) => {
 	}
 
 	await interaction.reply({
-		content: `Created **${breakoutChannel.name}**. Moving you there in 5 seconds...`,
+		content: `Created <#${breakoutChannel.id}>, moving you there in 5 seconds\n\nYou have admin permissions in this channel and it will automatically delete once everyone leaves`,
 		flags: MessageFlags.Ephemeral
 	});
 

@@ -7,18 +7,7 @@ services:
     restart: unless-stopped
     ports:
       - "3002:3000"
-    volumes:
-      - ./databases:/app/databases
     environment:
       - NODE_ENV=production
-      - BOT_TOKEN=${BOT_TOKEN}
-      - VERIFIED_ROLE_ID=${VERIFIED_ROLE_ID}
-      - ATTENDANCE_OFFICER_ROLES=${ATTENDANCE_OFFICER_ROLES}
-      - AUTHENTIK_URL=${AUTHENTIK_URL}
-      - AUTHENTIK_CLIENT_ID=${AUTHENTIK_CLIENT_ID}
-      - AUTHENTIK_CLIENT_SECRET=${AUTHENTIK_CLIENT_SECRET}
-      - CALLBACK_BASE_URL=${CALLBACK_BASE_URL}
-      - INFLUX_URL=${INFLUX_URL}
-      - INFLUX_TOKEN=${INFLUX_TOKEN}
-      - INFLUX_ORG=${INFLUX_ORG}
-      - INFLUX_BUCKET=${INFLUX_BUCKET}
+    env_file:
+      - stack.env

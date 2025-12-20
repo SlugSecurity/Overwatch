@@ -3,23 +3,36 @@ import {
 	ActionRowBuilder,
 	ButtonBuilder,
 	ButtonStyle,
-	type User
+	type User,
+	type GuildMember
 } from 'discord.js';
-import { greetingDb, GREETING_MESSAGES } from '#config/greeting.ts';
-import { ssoDb, SSO_CONFIG } from '#config/sso.ts';
+import { getGreetedUsersCollection, getVerifiedUsersCollection } from '#config/database.ts';
+import { GREETING_MESSAGES } from '#config/greeting.ts';
+import { SSO_CONFIG, VERIFIED_ROLE_ID } from '#config/sso.ts';
 import { generateState } from '#server/oauth.ts';
 
-export async function sendFirstTimeGreeting(user: User): Promise<boolean> {
+export async function sendFirstTimeGreeting(user: User, member?: GuildMember | null): Promise<boolean> {
 	const userId = user.id;
 
-	const alreadyGreeted = greetingDb.query('SELECT discord_id FROM greeted_users WHERE discord_id = ?').get(userId);
+	const alreadyGreeted = await getGreetedUsersCollection().findOne({ _id: userId });
 	if (alreadyGreeted) {
 		return false;
 	}
 
-	const alreadyVerified = ssoDb.query('SELECT discord_id FROM verified_users WHERE discord_id = ?').get(userId);
+	if (member?.roles.cache.has(VERIFIED_ROLE_ID)) {
+		await getGreetedUsersCollection().insertOne({
+			_id: userId,
+			greetedAt: new Date()
+		});
+		return false;
+	}
+
+	const alreadyVerified = await getVerifiedUsersCollection().findOne({ _id: userId });
 	if (alreadyVerified) {
-		greetingDb.query('INSERT INTO greeted_users (discord_id, greeted_at) VALUES (?, ?)').run(userId, Math.floor(Date.now() / 1000));
+		await getGreetedUsersCollection().insertOne({
+			_id: userId,
+			greetedAt: new Date()
+		});
 		return false;
 	}
 
@@ -45,14 +58,20 @@ export async function sendFirstTimeGreeting(user: User): Promise<boolean> {
 			components: [row]
 		});
 
-		greetingDb.query('INSERT INTO greeted_users (discord_id, greeted_at) VALUES (?, ?)').run(userId, Math.floor(Date.now() / 1000));
+		await getGreetedUsersCollection().insertOne({
+			_id: userId,
+			greetedAt: new Date()
+		});
 
 		console.log(`[GREETING] first-time greeting sent via DM: discord_id=${userId}`);
 
 		return true;
 	} catch (err) {
 		console.log(`[GREETING] failed to DM user: discord_id=${userId} (DMs likely disabled)`);
-		greetingDb.query('INSERT INTO greeted_users (discord_id, greeted_at) VALUES (?, ?)').run(userId, Math.floor(Date.now() / 1000));
+		await getGreetedUsersCollection().insertOne({
+			_id: userId,
+			greetedAt: new Date()
+		});
 		return false;
 	}
 }

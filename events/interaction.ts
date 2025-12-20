@@ -9,15 +9,14 @@ import {
 	EmbedBuilder,
 	MessageFlags
 } from 'discord.js';
-import { Database } from 'bun:sqlite';
+import { ObjectId } from 'mongodb';
+import { getAttendanceSessionsCollection, getAttendanceRecordsCollection, getAttendanceMetricsCollection, getVerifiedUsersCollection } from '#config/database.ts';
 import { ATTENDANCE_MESSAGES, formatMessage, pluralize } from '../config/attendance.js';
-import { VERIFIED_ROLE_ID, ssoDb } from '../config/sso.js';
-import { writeAttendanceMetric } from '../util/influx.js';
+import { VERIFIED_ROLE_ID } from '../config/sso.js';
+import { writeAttendanceMetric } from '../util/metrics.js';
 
 const once = false;
 const eventType = Events.InteractionCreate;
-
-const db = new Database('databases/server.db');
 
 async function invoke(client: Client, interaction: Interaction): Promise<void> {
 	if (interaction.isChatInputCommand()) {
@@ -26,13 +25,31 @@ async function invoke(client: Client, interaction: Interaction): Promise<void> {
 		return;
 	}
 
+	if (interaction.isAutocomplete()) {
+		const commandModule = (client as any).commands.get(interaction.commandName);
+		if (commandModule?.autocomplete) {
+			await commandModule.autocomplete(interaction);
+		}
+		return;
+	}
+
 	if (interaction.isButton()) {
 		const customId = interaction.customId;
 
 		if (customId.startsWith('attendance_submit_')) {
-			const sessionId = parseInt(customId.split('_')[2]);
+			const sessionIdStr = customId.split('_')[2];
+			let sessionId: ObjectId;
+			try {
+				sessionId = new ObjectId(sessionIdStr);
+			} catch {
+				await interaction.reply({
+					content: ATTENDANCE_MESSAGES.errors.sessionNotFound,
+					flags: MessageFlags.Ephemeral
+				});
+				return;
+			}
 
-			const session = db.query('SELECT * FROM attendance_sessions WHERE session_id = ?').get(sessionId) as any;
+			const session = await getAttendanceSessionsCollection().findOne({ _id: sessionId });
 
 			if (!session) {
 				await interaction.reply({
@@ -42,8 +59,8 @@ async function invoke(client: Client, interaction: Interaction): Promise<void> {
 				return;
 			}
 
-			const now = Math.floor(Date.now() / 1000);
-			if (now > session.expires_at) {
+			const now = new Date();
+			if (now > session.expiresAt) {
 				await interaction.reply({
 					content: ATTENDANCE_MESSAGES.errors.sessionExpired,
 					flags: MessageFlags.Ephemeral
@@ -59,9 +76,10 @@ async function invoke(client: Client, interaction: Interaction): Promise<void> {
 				return;
 			}
 
-			const existingRecord = db.query(
-				'SELECT * FROM attendance_records WHERE session_id = ? AND user_id = ?'
-			).get(sessionId, interaction.user.id);
+			const existingRecord = await getAttendanceRecordsCollection().findOne({
+				sessionId,
+				userId: interaction.user.id
+			});
 
 			if (existingRecord) {
 				await interaction.reply({
@@ -72,7 +90,7 @@ async function invoke(client: Client, interaction: Interaction): Promise<void> {
 			}
 
 			const modal = new ModalBuilder()
-				.setCustomId(`attendance_modal_${sessionId}`)
+				.setCustomId(`attendance_modal_${sessionId.toHexString()}`)
 				.setTitle(ATTENDANCE_MESSAGES.modal.title);
 
 			const keyInput = new TextInputBuilder()
@@ -95,9 +113,19 @@ async function invoke(client: Client, interaction: Interaction): Promise<void> {
 		const customId = interaction.customId;
 
 		if (customId.startsWith('attendance_modal_')) {
-			const sessionId = parseInt(customId.split('_')[2]);
+			const sessionIdStr = customId.split('_')[2];
+			let sessionId: ObjectId;
+			try {
+				sessionId = new ObjectId(sessionIdStr);
+			} catch {
+				await interaction.reply({
+					content: ATTENDANCE_MESSAGES.errors.sessionNotFound,
+					flags: MessageFlags.Ephemeral
+				});
+				return;
+			}
 
-			const session = db.query('SELECT * FROM attendance_sessions WHERE session_id = ?').get(sessionId) as any;
+			const session = await getAttendanceSessionsCollection().findOne({ _id: sessionId });
 
 			if (!session) {
 				await interaction.reply({
@@ -107,8 +135,8 @@ async function invoke(client: Client, interaction: Interaction): Promise<void> {
 				return;
 			}
 
-			const now = Math.floor(Date.now() / 1000);
-			if (now > session.expires_at) {
+			const now = new Date();
+			if (now > session.expiresAt) {
 				await interaction.reply({
 					content: ATTENDANCE_MESSAGES.errors.sessionExpired,
 					flags: MessageFlags.Ephemeral
@@ -118,7 +146,7 @@ async function invoke(client: Client, interaction: Interaction): Promise<void> {
 
 			const submittedKey = interaction.fields.getTextInputValue('attendance_key_input');
 
-			if (submittedKey !== session.attendance_key) {
+			if (submittedKey !== session.attendanceKey) {
 				await interaction.reply({
 					content: ATTENDANCE_MESSAGES.errors.incorrectCode,
 					flags: MessageFlags.Ephemeral
@@ -127,39 +155,42 @@ async function invoke(client: Client, interaction: Interaction): Promise<void> {
 			}
 
 			// race condition protection
-			const existingRecord = db.query(
-				'SELECT * FROM attendance_records WHERE session_id = ? AND user_id = ?'
-			).get(sessionId, interaction.user.id);
-
-			if (existingRecord) {
-				await interaction.reply({
-					content: ATTENDANCE_MESSAGES.errors.alreadySignedIn,
-					flags: MessageFlags.Ephemeral
+			try {
+				await getAttendanceRecordsCollection().insertOne({
+					_id: new ObjectId(),
+					sessionId,
+					userId: interaction.user.id,
+					username: interaction.user.tag,
+					submittedAt: new Date()
 				});
-				return;
+			} catch (err: any) {
+				if (err.code === 11000) {
+					await interaction.reply({
+						content: ATTENDANCE_MESSAGES.errors.alreadySignedIn,
+						flags: MessageFlags.Ephemeral
+					});
+					return;
+				}
+				throw err;
 			}
 
-			db.query(`
-				INSERT INTO attendance_records (session_id, user_id, username, submitted_at)
-				VALUES (?, ?, ?, ?)
-			`).run(sessionId, interaction.user.id, interaction.user.tag, Math.floor(Date.now() / 1000));
-
-			const verifiedUser = ssoDb.query('SELECT email FROM verified_users WHERE discord_id = ?').get(interaction.user.id) as { email: string } | null;
+			const verifiedUser = await getVerifiedUsersCollection().findOne({ _id: interaction.user.id });
 			if (verifiedUser) {
 				const cruzid = verifiedUser.email.split('@')[0];
 				writeAttendanceMetric({
-					eventSeries: session.event_series,
+					eventSeries: session.eventSeries,
 					cruzid,
 					username: interaction.user.tag,
 					sessionId
 				});
 			}
 
-			const attendees = db.query(
-				'SELECT user_id FROM attendance_records WHERE session_id = ? ORDER BY submitted_at ASC'
-			).all(sessionId) as Array<{ user_id: string }>;
+			const attendees = await getAttendanceRecordsCollection()
+				.find({ sessionId })
+				.sort({ submittedAt: 1 })
+				.toArray();
 
-			let mentionList = attendees.map(a => `<@${a.user_id}>`).join(' ');
+			let mentionList = attendees.map(a => `<@${a.userId}>`).join(' ');
 
 			// discord embed field limit
 			const maxLength = 900;
@@ -167,7 +198,7 @@ async function invoke(client: Client, interaction: Interaction): Promise<void> {
 				let truncated = '';
 				let count = 0;
 				for (const attendee of attendees) {
-					const mention = `<@${attendee.user_id}> `;
+					const mention = `<@${attendee.userId}> `;
 					if (truncated.length + mention.length > maxLength) break;
 					truncated += mention;
 					count++;
@@ -177,13 +208,15 @@ async function invoke(client: Client, interaction: Interaction): Promise<void> {
 			}
 
 			try {
-				const channel = await client.channels.fetch(session.channel_id);
+				const channel = await client.channels.fetch(session.channelId);
 				if (channel?.isTextBased()) {
-					const message = await channel.messages.fetch(session.message_id);
+					const message = await channel.messages.fetch(session.messageId);
 					const embed = EmbedBuilder.from(message.embeds[0]);
 
+					const expiresAtUnix = Math.floor(session.expiresAt.getTime() / 1000);
+
 					embed.setFields(
-						{ name: ATTENDANCE_MESSAGES.embed.fields.closes, value: `<t:${session.expires_at}:R>`, inline: true },
+						{ name: ATTENDANCE_MESSAGES.embed.fields.closes, value: `<t:${expiresAtUnix}:R>`, inline: true },
 						{ name: ATTENDANCE_MESSAGES.embed.fields.signedIn, value: `${attendees.length}`, inline: true },
 						{ name: ATTENDANCE_MESSAGES.embed.fields.whosHere, value: mentionList || ATTENDANCE_MESSAGES.embed.emptyState, inline: false }
 					);
@@ -194,17 +227,20 @@ async function invoke(client: Client, interaction: Interaction): Promise<void> {
 				console.error('Failed to update attendance embed:', error);
 			}
 
-			const attendanceHistory = db.query(`
-				SELECT s.event_series, COUNT(*) as count
-				FROM attendance_records r
-				JOIN attendance_sessions s ON r.session_id = s.session_id
-				WHERE r.user_id = ?
-				GROUP BY s.event_series
-				ORDER BY s.event_series
-			`).all(interaction.user.id) as Array<{ event_series: string; count: number }>;
+			const verifiedUserForHistory = await getVerifiedUsersCollection().findOne({ _id: interaction.user.id });
+			const cruzid = verifiedUserForHistory?.email?.split('@')[0] || '';
+
+			const attendanceHistory = await getAttendanceMetricsCollection().aggregate([
+				{ $match: { cruzid } },
+				{ $group: {
+					_id: '$eventSeries',
+					count: { $sum: 1 }
+				}},
+				{ $sort: { _id: 1 } }
+			]).toArray() as Array<{ _id: string; count: number }>;
 
 			let message = formatMessage(ATTENDANCE_MESSAGES.success.signedInTemplate, {
-				eventSeries: session.event_series
+				eventSeries: session.eventSeries
 			});
 
 			if (attendanceHistory.length > 0) {
@@ -212,7 +248,7 @@ async function invoke(client: Client, interaction: Interaction): Promise<void> {
 				for (const record of attendanceHistory) {
 					const plural = pluralize(record.count, 'session', 'sessions');
 					message += formatMessage(ATTENDANCE_MESSAGES.success.historyItemTemplate, {
-						eventSeries: record.event_series,
+						eventSeries: record._id,
 						count: record.count,
 						plural
 					});

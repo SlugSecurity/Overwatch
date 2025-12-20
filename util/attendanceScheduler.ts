@@ -1,16 +1,14 @@
 import type { Client } from 'discord.js';
 import { EmbedBuilder } from 'discord.js';
-import { Database } from 'bun:sqlite';
+import type { ObjectId } from 'mongodb';
+import { getAttendanceSessionsCollection } from '#config/database.ts';
 import { ATTENDANCE_MESSAGES } from '../config/attendance.js';
 
-const db = new Database('databases/server.db');
-
-// track timeouts for cleanup
-const activeTimeouts = new Map<number, NodeJS.Timeout>();
+const activeTimeouts = new Map<string, NodeJS.Timeout>();
 
 async function closeAttendanceSession(
 	client: Client,
-	sessionId: number,
+	sessionId: ObjectId,
 	channelId: string,
 	messageId: string
 ): Promise<void> {
@@ -31,26 +29,26 @@ async function closeAttendanceSession(
 			components: []
 		});
 
-		activeTimeouts.delete(sessionId);
+		activeTimeouts.delete(sessionId.toHexString());
 
-		console.log(`Closed attendance session ${sessionId}`);
+		console.log(`Closed attendance session ${sessionId.toHexString()}`);
 	} catch (error) {
-		console.error(`Failed to close attendance session ${sessionId}:`, error);
+		console.error(`Failed to close attendance session ${sessionId.toHexString()}:`, error);
 	}
 }
 
 export function scheduleSessionClose(
 	client: Client,
-	sessionId: number,
+	sessionId: ObjectId,
 	channelId: string,
 	messageId: string,
-	expiresAt: number
+	expiresAt: Date
 ): void {
-	const now = Math.floor(Date.now() / 1000);
-	const msUntilExpiration = (expiresAt - now) * 1000;
+	const now = Date.now();
+	const msUntilExpiration = expiresAt.getTime() - now;
 
+	// already expired
 	if (msUntilExpiration <= 0) {
-		// already expired
 		closeAttendanceSession(client, sessionId, channelId, messageId);
 		return;
 	}
@@ -59,37 +57,30 @@ export function scheduleSessionClose(
 		closeAttendanceSession(client, sessionId, channelId, messageId);
 	}, msUntilExpiration);
 
-	activeTimeouts.set(sessionId, timeout);
+	activeTimeouts.set(sessionId.toHexString(), timeout);
 
-	console.log(`Scheduled session ${sessionId} to close in ${Math.round(msUntilExpiration / 1000)}s`);
+	console.log(`Scheduled session ${sessionId.toHexString()} to close in ${Math.round(msUntilExpiration / 1000)}s`);
 }
 
 export async function initializeAttendanceScheduler(client: Client): Promise<void> {
 	console.log('Initializing attendance scheduler...');
 
-	const now = Math.floor(Date.now() / 1000);
-
 	// check recently expired in case bot was down
-	const activeSessions = db.query(`
-		SELECT session_id, channel_id, message_id, expires_at
-		FROM attendance_sessions
-		WHERE expires_at > ?
-	`).all(now - 3600) as Array<{
-		session_id: number;
-		channel_id: string;
-		message_id: string;
-		expires_at: number;
-	}>;
+	const oneHourAgo = new Date(Date.now() - 3600000);
+
+	const activeSessions = await getAttendanceSessionsCollection()
+		.find({ expiresAt: { $gt: oneHourAgo } })
+		.toArray();
 
 	console.log(`Found ${activeSessions.length} active or recently expired sessions`);
 
 	for (const session of activeSessions) {
 		scheduleSessionClose(
 			client,
-			session.session_id,
-			session.channel_id,
-			session.message_id,
-			session.expires_at
+			session._id,
+			session.channelId,
+			session.messageId,
+			session.expiresAt
 		);
 	}
 

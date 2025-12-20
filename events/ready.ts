@@ -1,6 +1,7 @@
 import { ActivityType, Events, type Client } from 'discord.js';
 import { loadCommands, loadJobs } from '#util/botStartup.js';
 import { initializeAttendanceScheduler } from '#util/attendanceScheduler.js';
+import { initializeActiveMemberSync } from '#util/activeMemberSync.js';
 
 const once = true;
 const eventType = Events.ClientReady;
@@ -49,6 +50,7 @@ async function invoke(client: Client): Promise<void> {
 	await loadCommands(client);
 	await loadJobs(client);
 	await initializeAttendanceScheduler(client);
+	await initializeActiveMemberSync(client);
 
 	await updatePresence(client);
 	console.log(`\nLogged in as ${client.user?.tag}!`);

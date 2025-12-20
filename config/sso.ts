@@ -1,5 +1,3 @@
-import { Database } from 'bun:sqlite';
-
 export const VERIFIED_ROLE_ID = process.env.VERIFIED_ROLE_ID || '';
 
 export const SSO_CONFIG = {
@@ -37,7 +35,6 @@ export const SSO_MESSAGES = {
 		}
 	},
 	errors: {
-		noPermission: 'You can\'t use this command',
 		invalidState: 'Invalid or expired verification session, try again',
 		authFailed: 'Authentication failed, try again',
 		alreadyLinked: 'This email is already linked to another Discord account',
@@ -49,19 +46,6 @@ export const SSO_MESSAGES = {
 	}
 } as const;
 
-const db = new Database('databases/server.db');
-
-db.exec(`
-	CREATE TABLE IF NOT EXISTS verified_users (
-		discord_id TEXT PRIMARY KEY,
-		email TEXT NOT NULL UNIQUE,
-		full_name TEXT,
-		verified_at INTEGER NOT NULL
-	)
-`);
-
 export function formatMessage(template: string, values: Record<string, any>): string {
 	return template.replace(/\{(\w+)\}/g, (_, key) => String(values[key] ?? `{${key}}`));
 }
-
-export { db as ssoDb };
