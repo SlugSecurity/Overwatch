@@ -1,5 +1,5 @@
 import { SlashCommandBuilder, type ChatInputCommandInteraction, type GuildMember, type VoiceChannel, MessageFlags } from 'discord.js';
-import { hasActiveBreakout, createBreakout, getBreakoutChannelId } from '../../util/breakoutManager.js';
+import { hasActiveBreakout, createBreakout, getBreakoutChannelId, deleteBreakout } from '../../util/breakoutManager.js';
 
 const create = () => {
 	const command = new SlashCommandBuilder()
@@ -53,6 +53,9 @@ const invoke = async (interaction: ChatInputCommandInteraction) => {
 		try {
 			if (member.voice.channel) {
 				await member.voice.setChannel(breakoutChannel);
+			} else if (breakoutChannel.members.size === 0) {
+				await deleteBreakout(breakoutChannel.id);
+				await breakoutChannel.delete();
 			}
 		} catch (error) {
 			console.error('Failed to move member to breakout channel:', error);
